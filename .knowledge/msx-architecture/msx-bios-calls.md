@@ -1,4 +1,8 @@
+---
 
+type: manual
+
+---
 # MSX BIOS calls
 
 This is an overview of all official MSX BIOS calls.
