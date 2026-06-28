@@ -24,4 +24,4 @@ The Domain Knowledge & Documentation is your source of truth. It must be treated
 ## Guardrails
 
 * Never execute the build.bat unless explicitly asked for (e.g., "build project")
-* Never write tests for assembly
+* Never write tests for assembly.
