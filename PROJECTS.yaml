@@ -1,0 +1,9 @@
+projects:
+  helloworld:
+    object_type: rom
+    rom_size: 16384 # 16KB
+    target_machine_type: MSX2
+  helloworld-no-bios-calls:
+    object_type: rom
+    rom_size: 16384 # 16KB
+    target_machine_type: MSX2
