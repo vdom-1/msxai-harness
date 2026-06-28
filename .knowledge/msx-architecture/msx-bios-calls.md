@@ -920,7 +920,7 @@ Registers: AF,BC
 
 ### NSETRD
 
-Address: #016E
+Address: `#016E`
 Function: Same function as [SETRD](https://map.grauw.nl/resources/msxbios.php#SETRD) (with 16-bit VRAM-address).
 Input: HL - VRAM address
 Registers: AF

@@ -1,6 +1,5 @@
 {
-    "chatCustomizationsEvaluations.customDiagnostics": [],
-    "chat.utilitySmallModel": "customendpoint/gemma-4-26B-A4B-it-qat",
-    "chat.utilityModel": "customendpoint/gemma-4-26B-A4B-it-qat",
-    "github.copilot.advanced": {"stream": true}
+    "chat.tools.terminal.autoApprove": {
+        ".\\build.bat": true
+    }
 }
