@@ -56,7 +56,7 @@ if not "%RC%"=="0" (
 
 echo Build SUCCEEDED
 echo.
-echo **Files generated**
+echo **Artifacts generated**
 for %%F in ("%PROJECT_OUT_DIR%/%PROJECT_NAME%.%OBJECT_TYPE%") do set "BINARY_SIZE_BYTES=%%~zF"
 echo Object: %PROJECT_OUT_DIR%/%PROJECT_NAME%.%OBJECT_TYPE% (%BINARY_SIZE_BYTES% bytes)
 echo Symbols: %PROJECT_OUT_DIR%/%PROJECT_NAME%.sym
