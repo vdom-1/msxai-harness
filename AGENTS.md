@@ -17,7 +17,7 @@ The Domain Knowledge & Documentation is your source of truth. It must be treated
 
 ### Navigation Rules for Agents:
 1. **Never Guess Paths:** Do not hallucinate or guess the location of documentation files. 
-2. **Deterministic Traversal:** When you need domain context, system specs, or architecture rules, use your native file-reading tools to open `./wiki/index.md` first.
+2. **Deterministic Traversal:** When you need domain context, system specs, or architecture rules, use your native file-reading tools to open `.knowledge/index.md` first.
 3. **Follow the Graph:** Use the relative Markdown links within the index file (and subsequent documents) to navigate to the specific knowledge nodes you need.
 4. **Separation of Concerns:** The files inside `./wiki/` contain text-based background knowledge and manuals. They do not define your executable programmatic tools or skills.
 
