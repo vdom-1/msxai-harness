@@ -21,7 +21,6 @@
 ;----------------------------------------------------------
 
 CURSOR  equ     0C000h          ; Cursor position in VRAM
-; CHGMOD removed - implemented custom routine
 
 
 ;----------------------------------------------------------
