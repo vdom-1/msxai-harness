@@ -3,6 +3,12 @@
 ; Target Assembler: Glass Z80
 ; =============================================================================
 
+PRT0 equ 0x98
+PRT1 equ 0x99
+PRT2 equ 0x9A
+PRT3 equ 0x9B
+
+
 ; =============================================================================
 ; BARE-METAL EXECUTION CONTEXT: Page 0 (0000h - 3FFFh)
 ; This memory block becomes physically active in Page 0 IMMEDIATELY AFTER
@@ -21,16 +27,12 @@ ISRHandler:
     push de
     push hl
 
-    ; 1. Your lightning-fast frame updates go here
-    ; [Direct I/O writes to VDP Ports 98h/99h]
-    ; [Direct I/O writes to PSG Ports A0h-A2h]
-
     ; 2. Acknowledge and clear the VDP hardware interrupt flag
     ld a, 0
-    out (099h), a       ; Select VDP Status Register 0
+    out (PRT1), a       ; Select VDP Status Register 0
     ld a, 8Fh           ; Register 15 (Status Register Select)
-    out (099h), a
-    in a, (099h)        ; Reading this port physically resets the interrupt line
+    out (PRT1), a
+    in a, (PRT1)        ; Reading this port physically resets the interrupt line
 
     pop hl              ; Restore registers
     pop de
@@ -61,9 +63,9 @@ ROMInit:
     ; -------------------------------------------------------------------------
     ; Set VRAM write address destination to 0000h via VDP Port 99h
     ld a, 000h
-    out (099h), a
+    out (PRT1), a
     ld a, 40h           ; Set bit 6 to indicate a WRITE operation
-    out (099h), a
+    out (PRT1), a
 
     ; Stream 16KB of graphic assets straight out of Page 3 ROM into VRAM
     ld hl, 0C000h       ; Source: Start of Page 3 ROM
@@ -71,7 +73,7 @@ ROMInit:
     
 StreamGameAssets:
     ld a, (hl)          ; Read asset byte from Page 3 ROM
-    out (098h), a       ; Send it directly to VRAM
+    out (PRT0), a       ; Send it directly to VRAM
     inc hl
     dec bc
     ld a, b
@@ -134,28 +136,34 @@ SETMODE0:
     
     ; CRITICAL: Reset VDP address flip-flop!
     ; The BIOS might have been interrupted or left the flip-flop in an unknown state.
-    in      a, (099h)
+    in      a, (PRT1)
 
     ; CRITICAL FOR MSX2: Set Register 14 to 0.
     ; This ensures all our VRAM writes go to the first 16KB bank.
     ; On MSX1, this safely mirrors to Reg 6 (Sprite Generator) which is ignored in Screen 0.
     ld      a, 0
-    out     (099h), a
+    out     (PRT1), a
     ld      a, 14 | 080h    ; 8Eh
-    out     (099h), a
+    out     (PRT1), a
     
     ; 1. Initialize VDP registers 0-8
+    ; Using indirect access with auto-increment
+    ; Fist set destination register to R#17 using normal direct access
+    ld a, 0             ; bit 7 = 0 -> autoincrement enabled
+                        ; bits 0-5 = 0 -> start at register 0
+    out (PRT1), a      ; First write: Data for R#17
+    
+    ld a, 17            ; 00010001b
+    or 80h              ; 10010001b
+    out (PRT1), a      ; Second write: Destination R#17
+
     ld      hl, VDP_REG_DATA
     ld      b, 9
     ld      c, 0
 .reg_loop:
-    ld      a, (hl)
-    out     (099h), a
-    ld      a, c
-    or      080h            ; Register Write Flag
-    out     (099h), a
+    ld      a,(hl)
+    out     (PRT3),a      ; <-- indirect write
     inc     hl
-    inc     c
     djnz    .reg_loop
 
     ; 2. Upload Custom Embedded Font characters to their ASCII slots
@@ -212,9 +220,9 @@ SETMODE0:
 
     ; 4. Turn on the display (Reg 1 = F0h)
     ld      a, 0F0h
-    out     (099h), a
+    out     (PRT1), a
     ld      a, 081h
-    out     (099h), a
+    out     (PRT1), a
     
     ei
     ret
@@ -253,13 +261,13 @@ COPY_TO_VRAM:
     ; HL = Source (RAM/ROM), DE = Dest (VRAM), BC = Length
     ; Assumes interrupts are already disabled!
     ld      a, e
-    out     (099h), a
+    out     (PRT1), a
     ld      a, d
     or      040h
-    out     (099h), a
+    out     (PRT1), a
 .copy_loop:
     ld      a, (hl)
-    out     (098h), a
+    out     (PRT0), a
     inc     hl
     dec     bc
     ld      a, b
@@ -272,13 +280,13 @@ FILL_VRAM:
     ; Assumes interrupts are already disabled!
     ld      d, a
     ld      a, l
-    out     (099h), a
+    out     (PRT1), a
     ld      a, h
     or      040h
-    out     (099h), a
+    out     (PRT1), a
 .fill_loop:
     ld      a, d
-    out     (098h), a
+    out     (PRT0), a
     dec     bc
     ld      a, b
     or      c
@@ -306,14 +314,14 @@ CUSTOM_CHPUT:
     ; Set VDP to Write Mode at address HL
     di
     ld      a, l
-    out     (099h), a       ; VDP Register 1 (Command/Status)
+    out     (PRT1), a       ; VDP Register 1 (Command/Status)
     ld      a, h
     or      040h            ; Bit 6 = 1 for Write
-    out     (099h), a       ; VDP Register 1
+    out     (PRT1), a       ; VDP Register 1
 
     ; Write character
     ld      a, c
-    out     (098h), a       ; VDP Register 0 (Data)
+    out     (PRT0), a       ; VDP Register 0 (Data)
     ei
 
     ; Increment cursor
