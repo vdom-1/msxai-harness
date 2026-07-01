@@ -1,1 +1,0 @@
-[MSX BIOS calls](msx-architecture/msx-bios-calls.md) - This is an overview of all official MSX BIOS calls.

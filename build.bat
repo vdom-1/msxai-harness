@@ -2,7 +2,7 @@
 setlocal
 
 set "JAVA=C:/Users/Victor/MSX/devtools/jre1.8.0_202/bin/java.exe"
-set "GLASS=C:/Users/Victor/MSX/devtools/glass.jar"
+set "GLASS=C:/Users/Victor/MSX/devtools/Glass-0.7-SNAPSHOT/glass.jar"
 
 set "PROJECT_NAME=%~1"
 set "OBJECT_TYPE=%~2"
