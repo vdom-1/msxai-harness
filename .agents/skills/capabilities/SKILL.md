@@ -1,7 +1,7 @@
 ---
 name: capabilities
 description: | 
-  identify machine (hardware configuration)
+  Identify machine (hardware configuration)
 metadata:
   version: 0.1
   author: vdom-1

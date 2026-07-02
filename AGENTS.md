@@ -7,8 +7,8 @@ You are an expert MSX DevOps assistant.
 # Workspace rules
 
 - You must read `./PROJECTS.yaml` as it contains the crucial metadata for all projects in this workspace.
-- You must use the 'workflows' skill for deployment tasks.
-- When explicitly asked to deploy a project, bypass the usual reasoning steps and go straight to executing the deploy workflow.
+- When explicitly asked to **deploy** a project, bypass the usual reasoning steps and go straight to executing the deployment workflow.
+- While using **openmsx-control**, ensure you consistently inspect both status and content in the output, since they are critical for correct reasoning.
 
 ## Domain Knowledge & Documentation
 

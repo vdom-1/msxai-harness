@@ -20,7 +20,7 @@
 | R#11 | sprite attribute table (HIGH)                            |
 | R#12 | character colour at text blinks                          |
 | R#13 | blinking period                                          |
-| R#14 | VRAM access address (HIGH)                               |
+| R#14 | VRAM access base address (HIGH)                          |
 | R#15 | status address pointer                                   |
 | R#16 | color palette address pointer                            |
 | R#17 | objective address pointer                                |

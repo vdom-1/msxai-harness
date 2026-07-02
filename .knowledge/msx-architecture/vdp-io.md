@@ -1,8 +1,8 @@
-# Ports
+# I/O
 
-## Overview
+## Ports overview
 
-|  Port   | Value |     Access     |
+|  Port   | Value |  Access mode   |
 |---------|-------|----------------|
 | Port #0 | 0x98  | READ and WRITE |
 | Port #1 | 0x99  | READ and WRITE |
@@ -59,3 +59,6 @@ Pallete Registers are read-only. To write data to the palette registers (P#0 to 
 | 3    | Port #2      | `00000GGG`  | Set Green brightness (3 bits)             |
 
 Each color component uses 3 bits, allowing 8 intensity levels (0 to 7). After the Green byte is written, the palette index automatically increments, enabling rapid programming of consecutive palette entries by repeatedly writing only the color data.
+
+## Accessing the VRAM
+

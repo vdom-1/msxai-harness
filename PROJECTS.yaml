@@ -1,16 +1,16 @@
 projects:
   helloworld:
-    object_type: ROM
+    object_type: rom
     rom_size: 16384 # 16KB
     target_machine_type: MSX1
     text_mode: 1
   demo:
-    object_type: ROM
+    object_type: rom
     rom_size: 16384 # 16KB
     target_machine_type: MSX2
     text_mode: 1
   bare-metal:
-    object_type: ROM
+    object_type: rom
     rom_size: 65536 # 64KB
     target_machine_type: MSX2
-    grahic_mode: 4
+    graphic_mode: 3
