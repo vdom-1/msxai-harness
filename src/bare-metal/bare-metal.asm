@@ -1,5 +1,5 @@
 ; =============================================================================
-; BARE-METAL 64KB ROM
+; BARE-METAL 64KB PLAIN ROM
 ; MSX2 (V9938) Graphic Mode 3 (Screen 4)
 ; Target Assembler: Glass Z80
 ; =============================================================================
@@ -9,16 +9,9 @@ PRT1 equ 0x99
 PRT2 equ 0x9A
 PRT3 equ 0x9B
 
-PGT_DDRSS equ 0x0
-CT_DDRSS  equ 0x2000
-PNT_DDRSS equ 0x1800
-
-PGT_SZ equ 0x800
-CT_SZ  equ 0x1800
-PNT_SZ equ 0x300
-
-CartridgeSlot equ 0xF000
-AssetRAMBuffer  equ 0xC000
+PGT_ADDR equ 0x00
+CT_ADDR  equ 0x020
+PNT_ADDR equ 0x18
 
 
 ; =============================================================================
@@ -70,20 +63,8 @@ ROMInit:
 
     call    VDPInit
 
-    ; 2. Set up VDP R#14 and destination address for the VRAM write
-    xor a                   
-    out (PRT1), a           
-    ld a, 14                ; R#14 (VRAM Access base address register)
-    or 080h                 ; Write bit (7)
-    out (PRT1), a
-    xor a                   ; Low byte (0)
-    out (PRT1), a
-    ld a, PGT_DDRSS         ; High byte (PGT Address)
-    or 0x40                 ; Write bit (6)
-    out (PRT1), a
-
     ; -------------------------------------------------------------------------
-    ; 3. THE HARDWARE FLIP: Map Page 3 to Cartridge ROM
+    ; Map Page 3 to Cartridge ROM
     ; -------------------------------------------------------------------------
     in a, (0xA8)            ; Read current Primary Slot Register status
     ld d, a                 ; D = Safe backup of the original boot slot state!
@@ -103,13 +84,23 @@ ROMInit:
     
     out (0xA8), a           ; --- FLIP! --- Page 3 is now your Cartridge ROM.
                             ; WARNING: RAM and Stack are gone. Do not PUSH/POP/CALL!
-                            
 
     ; -------------------------------------------------------------------------
-    ; 4. REGISTER-ONLY STREAMING LOOP
+    ; Stream Pattern Generator Table Data (Destination: VRAM 0x0)
     ; -------------------------------------------------------------------------
-    ld hl, 0xC000           ; Source: Page 3 of Cartridge ROM (Now physically visible!)
-    ld bc, 0x48             ; Counter: 2KB asset block
+    xor a                   
+    out (PRT1), a           
+    ld a, 14                ; R#14 (VRAM Access base address register)
+    or 080h                 ; Write bit (7)
+    out (PRT1), a
+    xor a                   ; Low byte (0)
+    out (PRT1), a
+    ld a, PGT_ADDR         ; High byte (PGT Address)
+    or 0x40                 ; Write bit (6)
+    out (PRT1), a
+
+    ld hl, .pgt_pg1           ; Source: Page 3 of Cartridge ROM (Now physically visible!)
+    ld bc, 72             ; Counter: 2KB asset block
 
 .manualStreamLoop:
     ld a, (hl)              ; Read asset byte directly from Cartridge ROM
@@ -133,40 +124,43 @@ ROMInit:
     
     xor a                   ; Low byte (0x00)
     out (PRT1), a
-    ld a, 0x20              ; High byte (0x20 for 0x2000)
+    ld a, CT_ADDR              ; High byte (0x20 for 0x2000)
     or 0x40                 ; Write bit (6)
     out (PRT1), a
 
-    ; Stream 72 bytes of solid colors (White on Black)
+    ; Stream 2KB bytes of solid colors (White on Black)
+    ld hl, .ct_pg1 
     ld bc, 72
 .colorStreamLoop:
-    ld a, 0xF1              ; Foreground: White (F), Background: Black (1)
+    ld a, (hl)              
     out (PRT0), a
+    inc hl 
+
     dec bc
     ld a, b
     or c
     jr nz, .colorStreamLoop
 
-
     
     ; -------------------------------------------------------------------------
-    ; 5. THE FLIP BACK: Restore Page 3 to System RAM
+    ; Restore Page 3 to System RAM
     ; -------------------------------------------------------------------------
     ; We have our original boot state still safely preserved in register D!
     ld a, d                 ; Load original boot slot layout
     out (0A8h), a           ; --- FLIP BACK! --- Page 3 is instantly System RAM again.
 
-    ; -------------------------------------------------------------------------
-    ; 6. CLEANUP & BIOS CUT-OFF
-    ; -------------------------------------------------------------------------
-    ; Now that RAM is back online, we can safely set our final stack pointer
+
+    ; Set stack pointer address
     ld sp, 0xF380           
 
+    ; -------------------------------------------------------------------------
+    ; BIOS CUT-OFF (Mapping page 0 to cartridge ROM)
+    ; -------------------------------------------------------------------------
     ld a, 0xD5              ; Binary 11010101b
     out (0A8h), a           ; The BIOS is now permanently and completely unmapped!
 
-    ; 1. Blank screen & disable VDP interrupts (R#1)
-    xor a
+    ; R#1: Bit 6=1 (Screen On), Bit 5=1 (V-Blank IRQ Enabled)
+    ld a, 0x60
     out (PRT1), a
     ld a, 0x81
     out (PRT1), a
@@ -181,6 +175,37 @@ ROMInit:
 GameInit:
     
 
+    ; -------------------------------------------------------------------------
+    ; Print 'Hello World?'
+    ; -------------------------------------------------------------------------
+    xor a                   
+    out (PRT1), a           
+    ld a, 14                ; R#14
+    or 080h                 
+    out (PRT1), a
+    
+    xor a                   ; Low byte (0x00)
+    out (PRT1), a
+    ld a, PNT_ADDR              ; High byte (0x18 for 0x1800)
+    or 0x40                 ; Write bit (6)
+    out (PRT1), a
+
+    ; Stream 2KB bytes of solid colors (White on Black)
+    ld hl, .pnt_pg1
+    ld bc, 12
+.printHelloWorld
+    ld a, (hl)              
+    out (PRT0), a
+    inc hl 
+
+    dec bc
+    ld a, b
+    or c
+    jr nz, .printHelloWorld
+
+   
+    ei
+
 
 GameLoop:
     ; Your core game logic, AI Markov chains, and physics run here.
@@ -193,7 +218,7 @@ GameLoop:
 VDPInit:    
     ; fully initialize VDP for Graphic Mode 3
   
-    ;in      a, (PRT1)   ; Reset VDP address flip-flop
+    in a, (PRT1)            ; Reset VDP address flip-flop
 
     ; Force the VDP pointer to the base VRAM block address
     xor a                   ; Value 0
@@ -213,19 +238,17 @@ VDPInit:
     ld      hl, VDP_REG_DATA
     ld      b, 0x0c
     ld      c, 0
-
 .vdp_cnfg_lp:
     ld      a, (hl)
     out     (PRT3), a      ; Writes R#0, increments up to R#11 automatically
     inc     hl
     djnz    .vdp_cnfg_lp
 
-    ei
     ret
 
 VDP_REG_DATA:
     db      0x04            ; R#0: M3=1(Graphic Mode 3)
-    db      0x00            ; R#1: Bit 6=1 (Screen On), Bit 5=1 (V-Blank IRQ Enabled)   0x60  
+    db      0x00            ; R#1: Bit 6=0 (Screen Off), Bit 5=0 (V-Blank IRQ Disabled)     
     db      0x06            ; R#2: Pattern Name Table at 1800H
     db      0xFF            ; R#3: Color Table at 2000H(LOW)
     db      0x00            ; R#4: Pattern Generator Table at 0000H
@@ -243,6 +266,8 @@ VDP_REG_DATA:
 ; =============================================================================
         ds 0x8000 - $, 0FFh
     org 0x8000
+.pnt_pg1:
+    db 0x04, 0x03, 0x05, 0x05, 0x06, 0x00, 0x08, 0x06, 0x07, 0x05, 0x02, 0x01
 
 ; =============================================================================
 ; Page 3 (transient data) after this data is loaded to the VRAM, this area
@@ -250,10 +275,7 @@ VDP_REG_DATA:
 ; =============================================================================
         ds 0C000h - $, 0FFh
     org 0C000h
-
-GameAssets:
-    ; [Your game maps, levels, sprites go here]
-.gameFont:
+.pgt_pg1:
     db      000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h ; space
     db      038h, 044h, 008h, 010h, 010h, 000h, 010h, 000h ; question mark
     db      0F0h, 088h, 088h, 088h, 088h, 088h, 0F0h, 000h ; D
@@ -263,7 +285,18 @@ GameAssets:
     db      070h, 088h, 088h, 088h, 088h, 070h, 000h, 000h ; O
     db      0F0h, 088h, 088h, 0F0h, 088h, 088h, 088h, 000h ; R
     db      088h, 088h, 088h, 0A8h, 0A8h, 050h, 000h, 000h ; W    
-    
+
+.ct_pg1:
+    db      0FFh, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; space
+    db      010h, 010h, 010h, 010h, 010h, 010h, 010h, 010h ; question mark
+    db      0C1h, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; D
+    db      0C1h, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; E
+    db      0C1h, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; H
+    db      0C1h, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; L
+    db      0C1h, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; O
+    db      0C1h, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; R
+    db      0C1h, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; W 
+
 ; =============================================================================
 ; Pad ROM to exactly 64KB
 ; =============================================================================
