@@ -62,3 +62,12 @@ Each color component uses 3 bits, allowing 8 intensity levels (0 to 7). After th
 
 ## Accessing the VRAM
 
+Read or write to VRAM address. The V9938 VRAM address counter is 17 bits wide, allowing it to address 128 KB of VRAM. The address bits are numbered A16 (most significant) through A0 (least significant).
+
+|Step|Destination|7 |6 |5  |4  |3  |2  |1  |0  |Purpose |
+|-   |-          |- |- |-  |-  |-  |-  |-  |-  |- |
+|1   |R#14       |0 |0 |0  |0  |A16|A17|A17|0  |Load the high-order three bits (A16 to Al4) of the address counter|
+|2   |Port #1    |A7|A6|A5 |A4 |A3 |A2 |A1 |A0 |Load the low-order eight bits (A7 to AO) of the address counter|
+|3   |Port #1    |0 |X |A13|A12|A11|A10|A9 |A8 |Load the remaining six bits (A13 to A8) of the address counter and specify bit 6 (X) read=0 or write=1|
+
+Once the address has been set, each read from or write to the VRAM data port automatically increments the address counter.
