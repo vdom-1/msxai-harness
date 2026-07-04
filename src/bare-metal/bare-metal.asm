@@ -9,7 +9,7 @@ PPI_PRTB equ 0xA9 ; Keyboard Matrix Columns
 PPI_PRTC equ 0xAA ; Control Port
 PPI_MODE equ 0xAB ; Configures how the 8255 chips behave internally
 
-VPD_PRT0 equ 0x98 ; Data Port
+VDP_PRT0 equ 0x98 ; Data Port
 VDP_PRT1 equ 0x99 ; Control Port
 VDP_PRT2 equ 0x9A ; Palette Port
 VDP_PRT3 equ 0x9B ; Indirect Port
@@ -107,7 +107,7 @@ ROMInit:
 
 .manualStreamLoop:
     ld a, (hl)              ; Read asset byte directly from Cartridge ROM
-    out (VPD_PRT0), a           ; Blast it straight to the VDP Data Port
+    out (VDP_PRT0), a           ; Blast it straight to the VDP Data Port
     inc hl                  ; Advance ROM pointer
     
     ; Minimal, fast 16-bit register decrement
@@ -136,7 +136,7 @@ ROMInit:
     ld bc, 72
 .colorStreamLoop:
     ld a, (hl)              
-    out (VPD_PRT0), a
+    out (VDP_PRT0), a
     inc hl 
 
     dec bc
@@ -198,7 +198,7 @@ GameInit:
     ld bc, 12
 .printHelloWorld
     ld a, (hl)              
-    out (VPD_PRT0), a
+    out (VDP_PRT0), a
     inc hl 
 
     dec bc
