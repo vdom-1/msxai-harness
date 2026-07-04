@@ -17,6 +17,10 @@ PGT_SZ equ 0x800
 CT_SZ  equ 0x1800
 PNT_SZ equ 0x300
 
+CartridgeSlot equ 0xF000
+AssetRAMBuffer  equ 0xC000
+
+
 ; =============================================================================
 ; Page 0 (0000h - 3FFFh)
 ; Before port switch: Unmapped (Main Bios)
@@ -62,62 +66,113 @@ ISRHandler:
     dw ROMInit              ; ROM initialization vector
     dw 0, 0, 0, 0, 0, 0
 ROMInit:
-    di                      ; Disable cpu interrupts
+    di                      ; Disable CPU interrupts
 
-    ; Blank screen & disable VDP interrupts (R#1)
+    call    VDPInit
+
+    ; 2. Set up VDP R#14 and destination address for the VRAM write
+    xor a                   
+    out (PRT1), a           
+    ld a, 14                ; R#14 (VRAM Access base address register)
+    or 080h                 ; Write bit (7)
+    out (PRT1), a
+    xor a                   ; Low byte (0)
+    out (PRT1), a
+    ld a, PGT_DDRSS         ; High byte (PGT Address)
+    or 0x40                 ; Write bit (6)
+    out (PRT1), a
+
+    ; -------------------------------------------------------------------------
+    ; 3. THE HARDWARE FLIP: Map Page 3 to Cartridge ROM
+    ; -------------------------------------------------------------------------
+    in a, (0xA8)            ; Read current Primary Slot Register status
+    ld d, a                 ; D = Safe backup of the original boot slot state!
+
+    ; Isolate Page 1's slot bits (bits 2-3) and shift them to Page 3 (bits 6-7)
+    ld a, d
+    and 0x0C                ; Mask bits 2-3 (00001100b) -> This is your Cartridge Slot!
+    rlca                    ; Rotate left 4 times to move them to bits 6-7
+    rlca
+    rlca
+    rlca                    ; A now looks like (SS000000b) where SS = Cartridge Slot
+    
+    ld e, a                 ; E = Cartridge Page 3 bits
+    ld a, d
+    and 0x3F                ; Clear original Page 3 bits (00111111b)
+    or e                    ; Merge Cartridge bits into Page 3
+    
+    out (0xA8), a           ; --- FLIP! --- Page 3 is now your Cartridge ROM.
+                            ; WARNING: RAM and Stack are gone. Do not PUSH/POP/CALL!
+                            
+
+    ; -------------------------------------------------------------------------
+    ; 4. REGISTER-ONLY STREAMING LOOP
+    ; -------------------------------------------------------------------------
+    ld hl, 0xC000           ; Source: Page 3 of Cartridge ROM (Now physically visible!)
+    ld bc, 0x48             ; Counter: 2KB asset block
+
+.manualStreamLoop:
+    ld a, (hl)              ; Read asset byte directly from Cartridge ROM
+    out (PRT0), a           ; Blast it straight to the VDP Data Port
+    inc hl                  ; Advance ROM pointer
+    
+    ; Minimal, fast 16-bit register decrement
+    dec bc
+    ld a, b
+    or c
+    jr nz, .manualStreamLoop ; Loop until all 2048 bytes are pushed
+
+    ; -------------------------------------------------------------------------
+    ; Stream Color Table Data (Destination: VRAM 0x2000)
+    ; -------------------------------------------------------------------------
+    xor a                   
+    out (PRT1), a           
+    ld a, 14                ; R#14
+    or 080h                 
+    out (PRT1), a
+    
+    xor a                   ; Low byte (0x00)
+    out (PRT1), a
+    ld a, 0x20              ; High byte (0x20 for 0x2000)
+    or 0x40                 ; Write bit (6)
+    out (PRT1), a
+
+    ; Stream 72 bytes of solid colors (White on Black)
+    ld bc, 72
+.colorStreamLoop:
+    ld a, 0xF1              ; Foreground: White (F), Background: Black (1)
+    out (PRT0), a
+    dec bc
+    ld a, b
+    or c
+    jr nz, .colorStreamLoop
+
+
+    
+    ; -------------------------------------------------------------------------
+    ; 5. THE FLIP BACK: Restore Page 3 to System RAM
+    ; -------------------------------------------------------------------------
+    ; We have our original boot state still safely preserved in register D!
+    ld a, d                 ; Load original boot slot layout
+    out (0A8h), a           ; --- FLIP BACK! --- Page 3 is instantly System RAM again.
+
+    ; -------------------------------------------------------------------------
+    ; 6. CLEANUP & BIOS CUT-OFF
+    ; -------------------------------------------------------------------------
+    ; Now that RAM is back online, we can safely set our final stack pointer
+    ld sp, 0xF380           
+
+    ld a, 0xD5              ; Binary 11010101b
+    out (0A8h), a           ; The BIOS is now permanently and completely unmapped!
+
+    ; 1. Blank screen & disable VDP interrupts (R#1)
     xor a
     out (PRT1), a
     ld a, 0x81
     out (PRT1), a
     in a, (PRT1)
 
-    ; Setup the Asset Stream Memory Profile
-    ; Page 3 = Cartridge ROM, Page 2 = Main RAM, Page 1 and 0 = Cartridge ROM
-    ;--------------------------------------------------------------------------
-    ld a, 0x75              ; Binary 01110101b
-    out (0A8h), a
-
-    ld sp, 0xBFFF           ; stack pointer securely inside the Page 2 Main RAM block
-
-    ; Stream Game Assets directly to VRAM (Fast & Clean)
-    xor a                   ; Value 0
-    out (PRT1), a           
-    ld a, 14                ; R#14(VRAM Access base address register)
-    or 080h                 ; write bit (7)
-    out (PRT1), a
-    xor a                   ; low byte (0)
-    out (PRT1), a
-    ld a, PGT_DDRSS         ; high byte (PGT Address)
-    or 0x40                 ; write bit (6)
-    out (PRT1), a
-    
-    ld hl, 0xC000           ; Source (Game assets)
-    ld bc, PGT_SZ           ; Counter (Size 16KB)    
-.streamGameAssets:
-    ld a, (hl)              ; Read asset byte from Cartridge
-    out (PRT0), a           ; Write straight to VDP Data Port
-    inc hl                  
-    dec bc                  
-    ld a, b
-    or c
-    jr nz, .streamGameAssets
-
-    ; BIOS Cut-off
-    ; Page 3 = Main RAM, Page 2, 1 and 0 = Cartridge ROM
-    ;--------------------------------------------------------------------------
-    ld a, 0xD5              ; Binary 11010101b
-    out (0A8h), a           ; The BIOS is now officially completely unmapped!
-
-    
-    ld sp, 0xF380           ; stack pointer back to standard high Page 3 RAM layout
-
     jp GameInit
-
-; -----------------------------------------------------------------------------
-; Storage variable inside program ROM space (Page 1)
-; -----------------------------------------------------------------------------
-CartridgeSlot: db 0x00
-RamSlot: db 0x00
 
 ; =============================================================================
 ; GAME INITIALIZATION
@@ -125,7 +180,6 @@ RamSlot: db 0x00
 
 GameInit:
     
-    call    VDPInit
 
 
 GameLoop:
@@ -141,7 +195,7 @@ VDPInit:
   
     ;in      a, (PRT1)   ; Reset VDP address flip-flop
 
-    ; Force the VDP pointer to the base VRAM block (Bank 0)
+    ; Force the VDP pointer to the base VRAM block address
     xor a                   ; Value 0
     out (PRT1), a           
     ld a, 14                ; R#14(VRAM Access base address register)
@@ -171,7 +225,7 @@ VDPInit:
 
 VDP_REG_DATA:
     db      0x04            ; R#0: M3=1(Graphic Mode 3)
-    db      0x60            ; R#1: Bit 6=1 (Screen On), Bit 5=1 (V-Blank IRQ Enabled)
+    db      0x00            ; R#1: Bit 6=1 (Screen On), Bit 5=1 (V-Blank IRQ Enabled)   0x60  
     db      0x06            ; R#2: Pattern Name Table at 1800H
     db      0xFF            ; R#3: Color Table at 2000H(LOW)
     db      0x00            ; R#4: Pattern Generator Table at 0000H
