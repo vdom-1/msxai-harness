@@ -4,10 +4,15 @@
 ; Target Assembler: Glass Z80
 ; =============================================================================
 
-PRT0 equ 0x98
-PRT1 equ 0x99
-PRT2 equ 0x9A
-PRT3 equ 0x9B
+PPI_PRTA equ 0xA8 ; Primary Slot Register
+PPI_PRTB equ 0xA9 ; Keyboard Matrix Columns
+PPI_PRTC equ 0xAA ; Control Port
+PPI_MODE equ 0xAB ; Configures how the 8255 chips behave internally
+
+VPD_PRT0 equ 0x98 ; Data Port
+VDP_PRT1 equ 0x99 ; Control Port
+VDP_PRT2 equ 0x9A ; Palette Port
+VDP_PRT3 equ 0x9B ; Indirect Port
 
 PGT_ADDR equ 0x00
 CT_ADDR  equ 0x020
@@ -24,7 +29,6 @@ PNT_ADDR equ 0x18
 
 ; [0038h]         : Z80 Interrupt Mode 1 execution entry point (Custom implementation)
         ds 0038h - $, 0FFh
-    org 0038h
 ISRHandler:
     di                  ; Disable interrupts
     push af             ; Protect the registers your ISR touches
@@ -34,11 +38,11 @@ ISRHandler:
 
     ; Clear VDP status baseline (R#15)
     xor a
-    out (PRT1), a
+    out (VDP_PRT1), a
     ld a, 15 
     or 0x80
-    out (PRT1), a    
-    in a, (PRT1)
+    out (VDP_PRT1), a    
+    in a, (VDP_PRT1)
 
     pop hl              ; Restore registers
     pop de
@@ -54,7 +58,6 @@ ISRHandler:
 ; Always mapped (program code)
 ; =============================================================================
         ds 4000h - $, 0FFh
-    org 4000h
     db "AB"                 ; MSX Cartridge Identifier
     dw ROMInit              ; ROM initialization vector
     dw 0, 0, 0, 0, 0, 0
@@ -89,22 +92,22 @@ ROMInit:
     ; Stream Pattern Generator Table Data (Destination: VRAM 0x0)
     ; -------------------------------------------------------------------------
     xor a                   
-    out (PRT1), a           
+    out (VDP_PRT1), a           
     ld a, 14                ; R#14 (VRAM Access base address register)
     or 080h                 ; Write bit (7)
-    out (PRT1), a
+    out (VDP_PRT1), a
     xor a                   ; Low byte (0)
-    out (PRT1), a
+    out (VDP_PRT1), a
     ld a, PGT_ADDR         ; High byte (PGT Address)
     or 0x40                 ; Write bit (6)
-    out (PRT1), a
+    out (VDP_PRT1), a
 
     ld hl, .pgt_pg1           ; Source: Page 3 of Cartridge ROM (Now physically visible!)
     ld bc, 72             ; Counter: 2KB asset block
 
 .manualStreamLoop:
     ld a, (hl)              ; Read asset byte directly from Cartridge ROM
-    out (PRT0), a           ; Blast it straight to the VDP Data Port
+    out (VPD_PRT0), a           ; Blast it straight to the VDP Data Port
     inc hl                  ; Advance ROM pointer
     
     ; Minimal, fast 16-bit register decrement
@@ -117,23 +120,23 @@ ROMInit:
     ; Stream Color Table Data (Destination: VRAM 0x2000)
     ; -------------------------------------------------------------------------
     xor a                   
-    out (PRT1), a           
+    out (VDP_PRT1), a           
     ld a, 14                ; R#14
     or 080h                 
-    out (PRT1), a
+    out (VDP_PRT1), a
     
     xor a                   ; Low byte (0x00)
-    out (PRT1), a
+    out (VDP_PRT1), a
     ld a, CT_ADDR              ; High byte (0x20 for 0x2000)
     or 0x40                 ; Write bit (6)
-    out (PRT1), a
+    out (VDP_PRT1), a
 
     ; Stream 2KB bytes of solid colors (White on Black)
     ld hl, .ct_pg1 
     ld bc, 72
 .colorStreamLoop:
     ld a, (hl)              
-    out (PRT0), a
+    out (VPD_PRT0), a
     inc hl 
 
     dec bc
@@ -161,10 +164,10 @@ ROMInit:
 
     ; R#1: Bit 6=1 (Screen On), Bit 5=1 (V-Blank IRQ Enabled)
     ld a, 0x60
-    out (PRT1), a
+    out (VDP_PRT1), a
     ld a, 0x81
-    out (PRT1), a
-    in a, (PRT1)
+    out (VDP_PRT1), a
+    in a, (VDP_PRT1)
 
     jp GameInit
 
@@ -179,23 +182,23 @@ GameInit:
     ; Print 'Hello World?'
     ; -------------------------------------------------------------------------
     xor a                   
-    out (PRT1), a           
+    out (VDP_PRT1), a           
     ld a, 14                ; R#14
     or 080h                 
-    out (PRT1), a
+    out (VDP_PRT1), a
     
     xor a                   ; Low byte (0x00)
-    out (PRT1), a
+    out (VDP_PRT1), a
     ld a, PNT_ADDR              ; High byte (0x18 for 0x1800)
     or 0x40                 ; Write bit (6)
-    out (PRT1), a
+    out (VDP_PRT1), a
 
     ; Stream 2KB bytes of solid colors (White on Black)
     ld hl, .pnt_pg1
     ld bc, 12
 .printHelloWorld
     ld a, (hl)              
-    out (PRT0), a
+    out (VPD_PRT0), a
     inc hl 
 
     dec bc
@@ -205,7 +208,6 @@ GameInit:
 
    
     ei
-
 
 GameLoop:
     ; Your core game logic, AI Markov chains, and physics run here.
@@ -218,29 +220,29 @@ GameLoop:
 VDPInit:    
     ; fully initialize VDP for Graphic Mode 3
   
-    in a, (PRT1)            ; Reset VDP address flip-flop
+    in a, (VDP_PRT1)            ; Reset VDP address flip-flop
 
     ; Force the VDP pointer to the base VRAM block address
     xor a                   ; Value 0
-    out (PRT1), a           
+    out (VDP_PRT1), a           
     ld a, 14                ; R#14(VRAM Access base address register)
     or 080h                 ; write bit (7)
-    out (PRT1), a
+    out (VDP_PRT1), a
     
     ; Initialize VDP registers 0-11 (indirect access with auto-increment)
     ; Fist set destination register to R#17 using normal direct access
     ld a, 0
-    out (PRT1), a
+    out (VDP_PRT1), a
     ld a, 17 
     or 80h
-    out (PRT1), a
+    out (VDP_PRT1), a
 
     ld      hl, VDP_REG_DATA
     ld      b, 0x0c
     ld      c, 0
 .vdp_cnfg_lp:
     ld      a, (hl)
-    out     (PRT3), a      ; Writes R#0, increments up to R#11 automatically
+    out     (VDP_PRT3), a      ; Writes R#0, increments up to R#11 automatically
     inc     hl
     djnz    .vdp_cnfg_lp
 
@@ -254,9 +256,9 @@ VDP_REG_DATA:
     db      0x00            ; R#4: Pattern Generator Table at 0000H
     db      0x3C            ; R#5: Sprite Attribute Table at 1E00H(LOW)
     db      0x07            ; R#6: Sprite Generator Table at 3800H
-    db      0xFA            ; R#7: Text: White(Color 15), Border: Dark Yellow(Color 10)
+    db      0x01            ; R#7: Border: Black (Text color zeroed out)
     db      0x08            ; R#8: 64K VRAM
-    db      0x82            ; R#9: NTSC (212 lines)
+    db      0x00            ; R#9: NTSC (192 lines)
     db      0x00            ; R#10: Color Table at 2000H(HIGH)
     db      0x00            ; R#11: Sprite Attributes at 1E00H(HIGH)
 
@@ -264,8 +266,7 @@ VDP_REG_DATA:
 ; =============================================================================
 ; Page 2 
 ; =============================================================================
-        ds 0x8000 - $, 0FFh
-    org 0x8000
+        ds 0x8000 - $, 0FFh    
 .pnt_pg1:
     db 0x04, 0x03, 0x05, 0x05, 0x06, 0x00, 0x08, 0x06, 0x07, 0x05, 0x02, 0x01
 
@@ -273,8 +274,7 @@ VDP_REG_DATA:
 ; Page 3 (transient data) after this data is loaded to the VRAM, this area
 ; will be mapped to RAM and will no longer be accessible by the game.
 ; =============================================================================
-        ds 0C000h - $, 0FFh
-    org 0C000h
+        ds 0C000h - $, 0FFh    
 .pgt_pg1:
     db      000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h ; space
     db      038h, 044h, 008h, 010h, 010h, 000h, 010h, 000h ; question mark
@@ -285,10 +285,10 @@ VDP_REG_DATA:
     db      070h, 088h, 088h, 088h, 088h, 070h, 000h, 000h ; O
     db      0F0h, 088h, 088h, 0F0h, 088h, 088h, 088h, 000h ; R
     db      088h, 088h, 088h, 0A8h, 0A8h, 050h, 000h, 000h ; W    
-
+        ds 0C800h - $, 0FFh
 .ct_pg1:
-    db      0FFh, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; space
-    db      010h, 010h, 010h, 010h, 010h, 010h, 010h, 010h ; question mark
+    db      0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; space
+    db      0F0h, 0F0h, 0F0h, 0F0h, 0F0h, 0F0h, 0F0h, 0F0h ; question mark
     db      0C1h, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; D
     db      0C1h, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; E
     db      0C1h, 0D1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h, 0F1h ; H
