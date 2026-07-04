@@ -65,96 +65,9 @@ ROMInit:
     di                      ; Disable CPU interrupts
 
     call    VDPInit
+    call    LoadGameAssets
 
-    ; -------------------------------------------------------------------------
-    ; Map Page 3 to Cartridge ROM
-    ; -------------------------------------------------------------------------
-    in a, (0xA8)            ; Read current Primary Slot Register status
-    ld d, a                 ; D = Safe backup of the original boot slot state!
-
-    ; Isolate Page 1's slot bits (bits 2-3) and shift them to Page 3 (bits 6-7)
-    ld a, d
-    and 0x0C                ; Mask bits 2-3 (00001100b) -> This is your Cartridge Slot!
-    rlca                    ; Rotate left 4 times to move them to bits 6-7
-    rlca
-    rlca
-    rlca                    ; A now looks like (SS000000b) where SS = Cartridge Slot
-    
-    ld e, a                 ; E = Cartridge Page 3 bits
-    ld a, d
-    and 0x3F                ; Clear original Page 3 bits (00111111b)
-    or e                    ; Merge Cartridge bits into Page 3
-    
-    out (0xA8), a           ; --- FLIP! --- Page 3 is now your Cartridge ROM.
-                            ; WARNING: RAM and Stack are gone. Do not PUSH/POP/CALL!
-
-    ; -------------------------------------------------------------------------
-    ; Stream Pattern Generator Table Data (Destination: VRAM 0x0)
-    ; -------------------------------------------------------------------------
-    xor a                   
-    out (VDP_PRT1), a           
-    ld a, 14                ; R#14 (VRAM Access base address register)
-    or 080h                 ; Write bit (7)
-    out (VDP_PRT1), a
-    xor a                   ; Low byte (0)
-    out (VDP_PRT1), a
-    ld a, PGT_ADDR         ; High byte (PGT Address)
-    or 0x40                 ; Write bit (6)
-    out (VDP_PRT1), a
-
-    ld hl, .pgt_pg1           ; Source: Page 3 of Cartridge ROM (Now physically visible!)
-    ld bc, 72             ; Counter: 2KB asset block
-
-.manualStreamLoop:
-    ld a, (hl)              ; Read asset byte directly from Cartridge ROM
-    out (VDP_PRT0), a           ; Blast it straight to the VDP Data Port
-    inc hl                  ; Advance ROM pointer
-    
-    ; Minimal, fast 16-bit register decrement
-    dec bc
-    ld a, b
-    or c
-    jr nz, .manualStreamLoop ; Loop until all 2048 bytes are pushed
-
-    ; -------------------------------------------------------------------------
-    ; Stream Color Table Data (Destination: VRAM 0x2000)
-    ; -------------------------------------------------------------------------
-    xor a                   
-    out (VDP_PRT1), a           
-    ld a, 14                ; R#14
-    or 080h                 
-    out (VDP_PRT1), a
-    
-    xor a                   ; Low byte (0x00)
-    out (VDP_PRT1), a
-    ld a, CT_ADDR              ; High byte (0x20 for 0x2000)
-    or 0x40                 ; Write bit (6)
-    out (VDP_PRT1), a
-
-    ; Stream 2KB bytes of solid colors (White on Black)
-    ld hl, .ct_pg1 
-    ld bc, 72
-.colorStreamLoop:
-    ld a, (hl)              
-    out (VDP_PRT0), a
-    inc hl 
-
-    dec bc
-    ld a, b
-    or c
-    jr nz, .colorStreamLoop
-
-    
-    ; -------------------------------------------------------------------------
-    ; Restore Page 3 to System RAM
-    ; -------------------------------------------------------------------------
-    ; We have our original boot state still safely preserved in register D!
-    ld a, d                 ; Load original boot slot layout
-    out (0A8h), a           ; --- FLIP BACK! --- Page 3 is instantly System RAM again.
-
-
-    ; Set stack pointer address
-    ld sp, 0xF380           
+    ld sp, 0xF380           ; Stack pointer
 
     ; -------------------------------------------------------------------------
     ; BIOS CUT-OFF (Mapping page 0 to cartridge ROM)
@@ -176,8 +89,6 @@ ROMInit:
 ; =============================================================================
 
 GameInit:
-    
-
     ; -------------------------------------------------------------------------
     ; Print 'Hello World?'
     ; -------------------------------------------------------------------------
@@ -196,7 +107,7 @@ GameInit:
     ; Stream 2KB bytes of solid colors (White on Black)
     ld hl, .pnt_pg1
     ld bc, 12
-.printHelloWorld
+.pntStreamLoop
     ld a, (hl)              
     out (VDP_PRT0), a
     inc hl 
@@ -204,13 +115,12 @@ GameInit:
     dec bc
     ld a, b
     or c
-    jr nz, .printHelloWorld
+    jr nz, .pntStreamLoop
 
-   
     ei
 
 GameLoop:
-    ; Your core game logic, AI Markov chains, and physics run here.
+    ; Your core game logic and physics run here.
     ; It runs completely unhindered until the V-Blank forces a jump to 0038h.
     jp GameLoop
 
@@ -261,6 +171,93 @@ VDP_REG_DATA:
     db      0x00            ; R#9: NTSC (192 lines)
     db      0x00            ; R#10: Color Table at 2000H(HIGH)
     db      0x00            ; R#11: Sprite Attributes at 1E00H(HIGH)
+
+LoadGameAssets:
+    ; -------------------------------------------------------------------------
+    ; Map Page 3 to Cartridge ROM
+    ; -------------------------------------------------------------------------
+    in a, (0xA8)            ; Read current Primary Slot Register status
+    ld d, a                 ; D = Save backup of the original boot slot state!
+
+    ; Isolate Page 1's slot bits (bits 2-3) and shift them to Page 3 (bits 6-7)
+    ld a, d
+    and 0x0C                ; Mask bits 2-3 (00001100b) -> This is your Cartridge Slot!
+    rlca                    ; Rotate left 4 times to move them to bits 6-7
+    rlca
+    rlca
+    rlca                    ; A now looks like (SS000000b) where SS = Cartridge Slot
+    
+    ld e, a                 ; E = Cartridge Page 3 bits
+    ld a, d
+    and 0x3F                ; Clear original Page 3 bits (00111111b)
+    or e                    ; Merge Cartridge bits into Page 3
+    
+    out (0xA8), a           ; --- FLIP! --- Page 3 is now your Cartridge ROM.
+                            ; WARNING: RAM and Stack are gone. Do not PUSH/POP/CALL!
+
+    ; -------------------------------------------------------------------------
+    ; Stream Pattern Generator
+    ; -------------------------------------------------------------------------
+    xor a                   
+    out (VDP_PRT1), a           
+    ld a, 14                ; R#14 (VRAM Access base address register)
+    or 080h                 ; Write bit (7)
+    out (VDP_PRT1), a
+    xor a                   ; Low byte (0)
+    out (VDP_PRT1), a
+    ld a, PGT_ADDR         ; High byte (PGT Address)
+    or 0x40                 ; Write bit (6)
+    out (VDP_PRT1), a
+
+    ld hl, .pgt_pg1           ; Source: Page 3 of Cartridge ROM (Now physically visible!)
+    ld bc, 72             ; Counter: 2KB asset block
+
+.pgtStreamLoop:
+    ld a, (hl)              ; Read asset byte directly from Cartridge ROM
+    out (VDP_PRT0), a           ; Blast it straight to the VDP Data Port
+    inc hl                  ; Advance ROM pointer
+    
+    ; Minimal, fast 16-bit register decrement
+    dec bc
+    ld a, b
+    or c
+    jr nz, .pgtStreamLoop ; Loop until all 2048 bytes are pushed
+
+    ; -------------------------------------------------------------------------
+    ; Stream Color Table
+    ; -------------------------------------------------------------------------
+    xor a                   
+    out (VDP_PRT1), a           
+    ld a, 14                ; R#14
+    or 080h                 
+    out (VDP_PRT1), a
+    
+    xor a                   ; Low byte (0x00)
+    out (VDP_PRT1), a
+    ld a, CT_ADDR              ; High byte (0x20 for 0x2000)
+    or 0x40                 ; Write bit (6)
+    out (VDP_PRT1), a
+
+    ; Stream 2KB bytes of solid colors (White on Black)
+    ld hl, .ct_pg1 
+    ld bc, 72
+.ctStreamLoop:
+    ld a, (hl)              
+    out (VDP_PRT0), a
+    inc hl 
+
+    dec bc
+    ld a, b
+    or c
+    jr nz, .ctStreamLoop
+
+    ; -------------------------------------------------------------------------
+    ; Restore Page 3 to System RAM
+    ; -------------------------------------------------------------------------
+    ld a, d                 ; Load backup of the original boot slot state
+    out (0A8h), a           ; --- FLIP BACK! --- Page 3 is instantly System RAM again.
+
+    ret
 
 
 ; =============================================================================

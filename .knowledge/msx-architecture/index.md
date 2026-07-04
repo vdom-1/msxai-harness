@@ -1,3 +1,3 @@
 [VDP Registers](vdp-registers.md)
-[VDP I/O](vdp-io.md)
-[VDP Graphic Mode](vdp-graphic-mode.md)
+[VDP Basic I/O](vdp-io.md)
+[VDP VRAM Layout](vdp-vram-layout.md)
