@@ -89,7 +89,7 @@ ROMInit:
 ; =============================================================================
 
 GameInit:
-    call    VDPInit
+    
     ; -------------------------------------------------------------------------
     ; Print 'Hello World?'
     ; -------------------------------------------------------------------------
@@ -118,7 +118,9 @@ GameInit:
     or c
     jr nz, .pntStreamLoop
 
-    ei
+    call    VDPInit
+
+    ei  
 
 GameLoop:
     ; Your core game logic and physics run here.
@@ -175,26 +177,75 @@ VDP_REG_DATA:
 
 LoadGameAssets:
     ; -------------------------------------------------------------------------
-    ; Map Page 3 to Cartridge ROM
+    ; 1. CHECK CARTRIDGE EXPANSION FIRST (While Page 3 is still RAM)
     ; -------------------------------------------------------------------------
-    in a, (0xA8)            ; Read current Primary Slot Register status
-    ld d, a                 ; D = Save backup of the original boot slot state!
+    ; -------------------------------------------------------------------------
+    ; 1. CONTEXT LOOKUP (While Page 3 is still safely RAM)
+    ; -------------------------------------------------------------------------
+    in a, (0xA8)            
+    ld d, a                 ; D = Original PPI state
 
-    ; Isolate Page 1's slot bits (bits 2-3) and shift them to Page 3 (bits 6-7)
+    and 0x0C                ; Isolate Page 1 bits (0000SS00b)
+    rrca
+    rrca                    ; A = Cartridge Primary Slot index (0-3)
+    ld c, a                 ; C = Primary Slot Index (e.g., 1)
+    
+    add a, 0xC1             ; Target 0xFCC1 (EXPTBL)
+    ld l, a
+    ld h, 0xFC              
+    ld a, (hl)              
+    and 0x80                
+    ld b, a                 ; B = Expansion Flag (0x80 if expanded)
+
+    ; If the cartridge slot is expanded, fetch its sub-slot layout from SLTTBL mirror
+    jr z, .SkipSltTbl
+    ld a, c                 ; Get Primary Slot Index (1)
+    add a, 0xC5             ; Target 0xFCC5 (SLTTBL)
+    ld l, a                 ; HL points to SLTTBL for Cartridge Slot
+    ld a, (hl)              ; A = Inverted mirror byte of Cartridge's 0xFFFF
+    cpl                     ; Invert it -> A = True current sub-slot layout!
+    ld c, a                 ; C = Safe True Cartridge Sub-slot layout
+.SkipSltTbl:
+
+    ; -------------------------------------------------------------------------
+    ; 2. MAP PAGE 3 TO CARTRIDGE PRIMARY
+    ; -------------------------------------------------------------------------
     ld a, d
-    and 0x0C                ; Mask bits 2-3 (00001100b) -> This is your Cartridge Slot!
-    rlca                    ; Rotate left 4 times to move them to bits 6-7
+    and 0x0C                
+    rlca                    
     rlca
     rlca
-    rlca                    ; A now looks like (SS000000b) where SS = Cartridge Slot
+    rlca                    ; A = (SS000000b)
+    ld e, a                 
     
-    ld e, a                 ; E = Cartridge Page 3 bits
     ld a, d
-    and 0x3F                ; Clear original Page 3 bits (00111111b)
-    or e                    ; Merge Cartridge bits into Page 3
-    
-    out (0xA8), a           ; --- FLIP! --- Page 3 is now your Cartridge ROM.
-                            ; WARNING: RAM and Stack are gone. Do not PUSH/POP/CALL!
+    and 0x3F                
+    or e                    
+    out (0xA8), a           ; --- FLIP PRIMARY! --- RAM Stack is gone.
+
+    ; -------------------------------------------------------------------------
+    ; 3. SAFE SUB-SLOT FLIP (Using our pre-calculated registers)
+    ; -------------------------------------------------------------------------
+    ld a, b                 ; Check expansion flag
+    and 0x80
+    jr z, .FetchRomByte     ; Not expanded? Skip to read.
+
+    ; Cartridge is expanded: Modify layout using our clean register copy
+    ld a, c                 ; A = Safe true layout (00b for your Sub-slot 0)
+    and 0x0C                ; Isolate Page 1's sub-slot bits (0000SS00b)
+    rlca
+    rlca
+    rlca
+    rlca                    ; Shift 4 times -> A = (SS000000b)
+    ld l, a
+
+    ld a, c                 ; Get true layout back
+    and 0x3F                ; Clear current Page 3 bits
+    or l                    ; Merge Page 1's sub-slot selection into Page 3
+    cpl                     ; Invert it for the hardware register layout requirement
+    ld (0xFFFF), a          ; --- FLIP SECONDARY! --- Page 3 is 100% stable now.
+
+.FetchRomByte:
 
     ; -------------------------------------------------------------------------
     ; Stream Pattern Generator
