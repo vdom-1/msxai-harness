@@ -177,19 +177,23 @@ VDP_REG_DATA:
 
 LoadGameAssets:
     ; -------------------------------------------------------------------------
-    ; 1. CHECK CARTRIDGE EXPANSION FIRST (While Page 3 is still RAM)
-    ; -------------------------------------------------------------------------
-    ; -------------------------------------------------------------------------
     ; 1. CONTEXT LOOKUP (While Page 3 is still safely RAM)
+    ; D: Reserved for "Primary Slot Register"
+    ; E: Reserved for "Primary Slot Index"
+    ; B: Reserved for "Expansion Flag"
+    ; C: Reserved for "Cartridge Sub-slot layout"
     ; -------------------------------------------------------------------------
+    
+    ; Determine the cartridge's primary slot
     in a, (0xA8)            
     ld d, a                 ; D = Original PPI state
-
     and 0x0C                ; Isolate Page 1 bits (0000SS00b)
     rrca
     rrca                    ; A = Cartridge Primary Slot index (0-3)
-    ld c, a                 ; C = Primary Slot Index (e.g., 1)
-    
+    ld e, a                 ; E = Primary Slot Index (e.g., 1)
+
+
+    ; Determine whether the cartridge is in a slot is expanded    
     add a, 0xC1             ; Target 0xFCC1 (EXPTBL)
     ld l, a
     ld h, 0xFC              
@@ -197,18 +201,18 @@ LoadGameAssets:
     and 0x80                
     ld b, a                 ; B = Expansion Flag (0x80 if expanded)
 
-    ; If the cartridge slot is expanded, fetch its sub-slot layout from SLTTBL mirror
-    jr z, .SkipSltTbl
-    ld a, c                 ; Get Primary Slot Index (1)
+    ; If expanded, discover which subslot page 1 currently uses
+    jr z, .skipSLTTBL
+    ld a, e                 ; Get Primary Slot Index (1)
     add a, 0xC5             ; Target 0xFCC5 (SLTTBL)
     ld l, a                 ; HL points to SLTTBL for Cartridge Slot
     ld a, (hl)              ; A = Inverted mirror byte of Cartridge's 0xFFFF
     cpl                     ; Invert it -> A = True current sub-slot layout!
-    ld c, a                 ; C = Safe True Cartridge Sub-slot layout
-.SkipSltTbl:
+    ld c, a                 ; C = Cartridge Sub-slot layout
 
+.skipSLTTBL:
     ; -------------------------------------------------------------------------
-    ; 2. MAP PAGE 3 TO CARTRIDGE PRIMARY
+    ; 2. MAP PAGE 3 TO CARTRIDGE PRIMARY (RAM cut-off)
     ; -------------------------------------------------------------------------
     ld a, d
     and 0x0C                
@@ -228,7 +232,7 @@ LoadGameAssets:
     ; -------------------------------------------------------------------------
     ld a, b                 ; Check expansion flag
     and 0x80
-    jr z, .FetchRomByte     ; Not expanded? Skip to read.
+    jr z, .streamToVRAM     ; Not expanded? Skip to read.
 
     ; Cartridge is expanded: Modify layout using our clean register copy
     ld a, c                 ; A = Safe true layout (00b for your Sub-slot 0)
@@ -245,7 +249,9 @@ LoadGameAssets:
     cpl                     ; Invert it for the hardware register layout requirement
     ld (0xFFFF), a          ; --- FLIP SECONDARY! --- Page 3 is 100% stable now.
 
-.FetchRomByte:
+.streamToVRAM:
+
+    exx
 
     ; -------------------------------------------------------------------------
     ; Stream Pattern Generator
@@ -303,12 +309,20 @@ LoadGameAssets:
     or c
     jr nz, .ctStreamLoop
 
+    exx
+
     ; -------------------------------------------------------------------------
     ; Restore Page 3 to System RAM
     ; -------------------------------------------------------------------------
     ld a, d                 ; Load backup of the original boot slot state
     out (0A8h), a           ; --- FLIP BACK! --- Page 3 is instantly System RAM again.
 
+
+    ; On return:
+    ;   D = original PPI register
+    ;   E = oPrimary Slot bits
+    ;   B = 00h/80h expansion flag
+    ;   C = true secondary-slot layout (valid only if B!=0)
     ret
 
 
