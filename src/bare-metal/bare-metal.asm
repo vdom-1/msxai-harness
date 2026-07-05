@@ -64,7 +64,14 @@ ISRHandler:
 ROMInit:
     di                      ; Disable CPU interrupts
 
-    call    VDPInit
+    ; Diable VPD
+    ; R#1: Bit 6=1 (Screen On), Bit 5=1 (V-Blank IRQ Enabled)
+    ld a, 0x00
+    out (VDP_PRT1), a
+    ld a, 0x81
+    out (VDP_PRT1), a
+    in a, (VDP_PRT1)
+
     call    LoadGameAssets
 
     ld sp, 0xF380           ; Stack pointer
@@ -75,13 +82,6 @@ ROMInit:
     ld a, 0xD5              ; Binary 11010101b
     out (0A8h), a           ; The BIOS is now permanently and completely unmapped!
 
-    ; R#1: Bit 6=1 (Screen On), Bit 5=1 (V-Blank IRQ Enabled)
-    ld a, 0x60
-    out (VDP_PRT1), a
-    ld a, 0x81
-    out (VDP_PRT1), a
-    in a, (VDP_PRT1)
-
     jp GameInit
 
 ; =============================================================================
@@ -89,6 +89,7 @@ ROMInit:
 ; =============================================================================
 
 GameInit:
+    call    VDPInit
     ; -------------------------------------------------------------------------
     ; Print 'Hello World?'
     ; -------------------------------------------------------------------------
@@ -160,7 +161,7 @@ VDPInit:
 
 VDP_REG_DATA:
     db      0x04            ; R#0: M3=1(Graphic Mode 3)
-    db      0x00            ; R#1: Bit 6=0 (Screen Off), Bit 5=0 (V-Blank IRQ Disabled)     
+    db      0x60            ; R#1: Bit 6=0 (Screen Off), Bit 5=0 (V-Blank IRQ Disabled)     
     db      0x06            ; R#2: Pattern Name Table at 1800H
     db      0xFF            ; R#3: Color Table at 2000H(LOW)
     db      0x00            ; R#4: Pattern Generator Table at 0000H
