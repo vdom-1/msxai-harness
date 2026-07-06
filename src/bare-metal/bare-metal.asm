@@ -76,11 +76,8 @@ ROMInit:
 
     ld sp, 0xF380           ; Stack pointer
 
-    ; -------------------------------------------------------------------------
-    ; BIOS CUT-OFF (Mapping page 0 to cartridge ROM)
-    ; -------------------------------------------------------------------------
-    ld a, 0xD5              ; Binary 11010101b
-    out (0A8h), a           ; The BIOS is now permanently and completely unmapped!
+    call BIOSCutOff
+  
 
     jp GameInit
 
@@ -201,8 +198,8 @@ LoadGameAssets:
     and 0x80                
     ld b, a                 ; B = Expansion Flag (0x80 if expanded)
 
-    ; If expanded, discover which subslot page 1 currently uses
-    jr z, .skipSLTTBL
+    jr z, .skipSLTTBL       ; If not expanded, skipp SLTTBL
+
     ld a, e                 ; Get Primary Slot Index (1)
     add a, 0xC5             ; Target 0xFCC5 (SLTTBL)
     ld l, a                 ; HL points to SLTTBL for Cartridge Slot
@@ -320,11 +317,19 @@ LoadGameAssets:
 
     ; On return:
     ;   D = original PPI register
-    ;   E = oPrimary Slot bits
+    ;   E = Primary Slot bits
     ;   B = 00h/80h expansion flag
     ;   C = true secondary-slot layout (valid only if B!=0)
     ret
 
+BIOSCutOff:
+  ; -------------------------------------------------------------------------
+    ; BIOS CUT-OFF (Mapping page 0 to cartridge ROM)
+    ; -------------------------------------------------------------------------
+    ld a, 0xD5              ; Binary 11010101b
+    out (0A8h), a           ; The BIOS is now permanently and completely unmapped!
+
+    ret
 
 ; =============================================================================
 ; Page 2 
