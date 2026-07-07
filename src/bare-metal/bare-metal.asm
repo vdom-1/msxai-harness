@@ -166,7 +166,7 @@ VDPInit:
 
 VDP_REG_DATA:
     db      0x04            ; R#0: M3=1(Graphic Mode 3)
-    db      0x60            ; R#1: Bit 6=0 (Screen Off), Bit 5=0 (V-Blank IRQ Disabled)     
+    db      0x60            ; R#1: Bit 6=1 (Screen on), Bit 5=1 (V-Blank IRQ enabled)
     db      0x06            ; R#2: Pattern Name Table at 1800H
     db      0xFF            ; R#3: Color Table at 2000H(LOW)
     db      0x00            ; R#4: Pattern Generator Table at 0000H
