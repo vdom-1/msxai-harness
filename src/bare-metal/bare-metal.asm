@@ -30,7 +30,6 @@ PNT_ADDR equ 0x18
 ; [0038h]         : Z80 Interrupt Mode 1 execution entry point (Custom implementation)
         ds 0038h - $, 0FFh
 ISRHandler:
-    di                  ; Disable interrupts
     push af             ; Protect the registers your ISR touches
     push bc
     push de
@@ -49,7 +48,7 @@ ISRHandler:
     pop bc
     pop af
     ei                  ; Enable interrupts
-    reti
+    ret
 
 ; [Post-ISRHandler - 3FFFh] : Free unrestricted space
 
