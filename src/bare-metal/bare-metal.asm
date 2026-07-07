@@ -20,9 +20,9 @@ PNT_ADDR equ 0x18
 
 
 ; =============================================================================
-; Page 0 (0000h - 3FFFh)
-; Before port switch: Unmapped (Main Bios)
-; After port switch: Mapped (ISRHandler)
+; Page 0 (0000h to 3FFFh)
+; Before bootstrap the environment: Main Bios
+; After bootstrap the environment: Cartridge ROM
 ; =============================================================================
 
 ; [0000h - 0037h] Free unrestricted space 
@@ -54,8 +54,8 @@ ISRHandler:
 ; [Post-ISRHandler - 3FFFh] : Free unrestricted space
 
 ; =============================================================================
-; Page 1 (4000h - 7FFFh)
-; Always mapped (program code)
+; Page 1 (4000h to 7FFFh)
+; Always Cartrigde ROM
 ; =============================================================================
         ds 4000h - $, 0FFh
     db "AB"                 ; MSX Cartridge Identifier
@@ -425,15 +425,20 @@ BootstrapGameEnvironment:
 
 
 ; =============================================================================
-; Page 2 
+; Page 2 (8000h to BFFFh)
+; Before bootstrap the environment: Arbitrary 
+; After bootstrap the environment: Cartridge ROM
 ; =============================================================================
         ds 0x8000 - $, 0FFh    
 .pnt_pg1:
     db 0x04, 0x03, 0x05, 0x05, 0x06, 0x00, 0x08, 0x06, 0x07, 0x05, 0x02, 0x01
 
 ; =============================================================================
-; Page 3 (transient data) after this data is loaded to the VRAM, this area
-; will be mapped to RAM and will no longer be accessible by the game.
+; Page 3 Data Region (0C000h - FFFFh)
+; This block contains transient data used during environment bootstrapping. 
+; During this phase, Page 3 is temporarily remapped from RAM to Cartridge ROM 
+; to allow direct streaming of graphical assets to VRAM. Once the transfer is 
+; complete, Page 3 is reverted to its original RAM mapping.
 ; =============================================================================
         ds 0C000h - $, 0FFh    
 .pgt_pg1:
