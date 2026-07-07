@@ -78,7 +78,7 @@ ROMInit:
     ; StreamGameAssets (ROM → VRAM)
     ; Slot mapping
     ; -------------------------------------------------------------------------
-    call    LoadGameAssets
+    call    BootstrapGameEnvironment
 
     ; -------------------------------------------------------------------------
     ; Set Stack Pointer(sp) final address
@@ -179,29 +179,25 @@ VDP_REG_DATA:
     db      0x00            ; R#10: Color Table at 2000H(HIGH)
     db      0x00            ; R#11: Sprite Attributes at 1E00H(HIGH)
 
-LoadGameAssets:
+BootstrapGameEnvironment:
     ; -------------------------------------------------------------------------
     ; 1. CONTEXT DISCOVERY (While Page 3 is still safely RAM)
-    ; -------------------------------------------------------------------------
-    
+    ; -------------------------------------------------------------------------    
     in   a,(0A8h)
-    ld   d,a              ; D = Original PPI state
+    ld   d,a                ; D = Original PPI state
 
-    ; Save original page-3 bits
-    and  0C0h
+    and  0C0h               ; Isolate page-3 bits
     exx
-    ld   d,a              ; D' = Original page-3 primary slot bits
+    ld   e,a                ; E' = RAM primary slot bits
     exx
 
-    ; Recover original PPI byte
     ld   a,d
-    and  0Ch              ; Isolate page-1 bits
+    and  0Ch                ; Isolate page-1 bits
     rrca
-    rrca                  ; A = Cartridge primary slot index (0-3)
-    ld   e,a
+    rrca                  
+    ld   e,a                ; E = Cartridge primary slot index (0-3)
 
-
-    ; Determine whether the cartridge is in a slot is expanded    
+    ; Determine whether the cartridge is in a slot is expanded
     add a, 0xC1             ; Target 0xFCC1 (EXPTBL)
     ld l, a
     ld h, 0xFC              
@@ -414,7 +410,7 @@ LoadGameAssets:
     and  3Fh          ; keep current pages 0-2
 
     exx
-    or   d            ; merge original page-3 bits
+    or   e            ; merge original page-3 bits
     exx
 
     out  (0A8h),a
