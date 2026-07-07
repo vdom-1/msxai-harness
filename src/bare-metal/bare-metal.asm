@@ -25,11 +25,18 @@ PNT_ADDR equ 0x18
 ; After bootstrap the environment: Cartridge ROM
 ; =============================================================================
 
-; [0000h - 0037h] Free unrestricted space 
+; [0000h - 0037h] Free space 
 
-; [0038h]         : Z80 Interrupt Mode 1 execution entry point (Custom implementation)
-        ds 0038h - $, 0FFh
-ISRHandler:
+        ds 0038h - $, 0FFh        
+    jp INTHandler ; [0038h] Custom implementation for Maskable interrupt (INT) in IM1
+
+; [0039h - 0065h] Free space
+
+        ds 0066h - $, 0FFh    
+    jp NMIHandler ; [0066h] Safe-net for Non-maskable interrupt (NMI)    
+
+
+INTHandler:
     push af             ; Protect the registers your ISR touches
     push bc
     push de
@@ -49,8 +56,11 @@ ISRHandler:
     pop af
     ei                  ; Enable interrupts
     ret
+    
+NMIHandler:
+    retn
 
-; [Post-ISRHandler - 3FFFh] : Free unrestricted space
+
 
 ; =============================================================================
 ; Page 1 (4000h to 7FFFh)
