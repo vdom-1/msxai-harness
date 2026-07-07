@@ -64,19 +64,26 @@ ISRHandler:
 ROMInit:
     di                      ; Disable CPU interrupts
 
+    ; -------------------------------------------------------------------------
     ; Diable VPD
     ; R#1: Bit 6=1 (Screen On), Bit 5=1 (V-Blank IRQ Enabled)
+    ; -------------------------------------------------------------------------
     ld a, 0x00
     out (VDP_PRT1), a
     ld a, 0x81
     out (VDP_PRT1), a
     in a, (VDP_PRT1)
 
+    ; -------------------------------------------------------------------------
+    ; StreamGameAssets (ROM → VRAM)
+    ; Slot mapping
+    ; -------------------------------------------------------------------------
     call    LoadGameAssets
 
+    ; -------------------------------------------------------------------------
+    ; Set Stack Pointer(sp) final address
+    ; -------------------------------------------------------------------------
     ld sp, 0xF380           ; Stack pointer
-
-    call BIOSCutOff
   
 
     jp GameInit
@@ -174,20 +181,24 @@ VDP_REG_DATA:
 
 LoadGameAssets:
     ; -------------------------------------------------------------------------
-    ; 1. CONTEXT LOOKUP (While Page 3 is still safely RAM)
-    ; D: Reserved for "Primary Slot Register"
-    ; E: Reserved for "Primary Slot Index"
-    ; B: Reserved for "Expansion Flag"
-    ; C: Reserved for "Cartridge Sub-slot layout"
+    ; 1. CONTEXT DISCOVERY (While Page 3 is still safely RAM)
     ; -------------------------------------------------------------------------
     
-    ; Determine the cartridge's primary slot
-    in a, (0xA8)            
-    ld d, a                 ; D = Original PPI state
-    and 0x0C                ; Isolate Page 1 bits (0000SS00b)
+    in   a,(0A8h)
+    ld   d,a              ; D = Original PPI state
+
+    ; Save original page-3 bits
+    and  0C0h
+    exx
+    ld   d,a              ; D' = Original page-3 primary slot bits
+    exx
+
+    ; Recover original PPI byte
+    ld   a,d
+    and  0Ch              ; Isolate page-1 bits
     rrca
-    rrca                    ; A = Cartridge Primary Slot index (0-3)
-    ld e, a                 ; E = Primary Slot Index (e.g., 1)
+    rrca                  ; A = Cartridge primary slot index (0-3)
+    ld   e,a
 
 
     ; Determine whether the cartridge is in a slot is expanded    
@@ -197,6 +208,9 @@ LoadGameAssets:
     ld a, (hl)              
     and 0x80                
     ld b, a                 ; B = Expansion Flag (0x80 if expanded)
+    exx
+    ld b, a                 ; B' = Expansion Flag (0x80 if expanded)
+    exx
 
     jr z, .skipSLTTBL       ; If not expanded, skipp SLTTBL
 
@@ -206,10 +220,14 @@ LoadGameAssets:
     ld a, (hl)              ; A = Inverted mirror byte of Cartridge's 0xFFFF
     cpl                     ; Invert it -> A = True current sub-slot layout!
     ld c, a                 ; C = Cartridge Sub-slot layout
+    exx    
+    ld c, a                 ; C' = Cartridge Sub-slot layout
+    exx
 
 .skipSLTTBL:
+
     ; -------------------------------------------------------------------------
-    ; 2. MAP PAGE 3 TO CARTRIDGE PRIMARY (RAM cut-off)
+    ; 2. MAP PAGE 3 → CARTRIDGE (RAM cut-off)
     ; -------------------------------------------------------------------------
     ld a, d
     and 0x0C                
@@ -217,19 +235,16 @@ LoadGameAssets:
     rlca
     rlca
     rlca                    ; A = (SS000000b)
-    ld e, a                 
+    ld l, a                 
     
     ld a, d
     and 0x3F                
-    or e                    
+    or l                    
     out (0xA8), a           ; --- FLIP PRIMARY! --- RAM Stack is gone.
 
-    ; -------------------------------------------------------------------------
-    ; 3. SAFE SUB-SLOT FLIP (Using our pre-calculated registers)
-    ; -------------------------------------------------------------------------
     ld a, b                 ; Check expansion flag
     and 0x80
-    jr z, .streamToVRAM     ; Not expanded? Skip to read.
+    jr z, .skipSubSlotFlip     ; Not expanded? Skip to Stream assets.
 
     ; Cartridge is expanded: Modify layout using our clean register copy
     ld a, c                 ; A = Safe true layout (00b for your Sub-slot 0)
@@ -244,11 +259,9 @@ LoadGameAssets:
     and 0x3F                ; Clear current Page 3 bits
     or l                    ; Merge Page 1's sub-slot selection into Page 3
     cpl                     ; Invert it for the hardware register layout requirement
-    ld (0xFFFF), a          ; --- FLIP SECONDARY! --- Page 3 is 100% stable now.
+    ld (0xFFFF), a          ; --- FLIP SECONDARY! --- Page 3 (expanded) is 100% stable now.
 
-.streamToVRAM:
-
-    exx
+.skipSubSlotFlip:
 
     ; -------------------------------------------------------------------------
     ; Stream Pattern Generator
@@ -306,30 +319,114 @@ LoadGameAssets:
     or c
     jr nz, .ctStreamLoop
 
+
+    ;------------------------------------------
+    ; BIOSCutOff
+    ;------------------------------------------
+
+    ; Keep page 3 unchanged
+    in   a,(0A8h)
+    and 0C0h
+    ld  l,a
+
+    ; Replicate cartridge primary slot into
+    ; pages 0,1 and 2.
+    ld  a,e            ; SS
+
+    ld  h,a            ; save original
+
+    ; page 0
+    ld  b,a
+
+    ; page 1
+    rlca
+    rlca
+    or  b
+    ld  b,a
+
+    ; page 2
+    ld  a,h
+    rlca
+    rlca
+    rlca
+    rlca
+    or  b
+
+    ; restore page 3 bits
+    or  l
+
+
+    out (0A8h),a
+
+    
+    ; Secondary slot register (FFFFh)
+    ; Only if the cartridge is expanded.
+
     exx
+    ld  a,b
+    exx
+    
+    and 080h
+    jr  z,.done
+
+    exx
+    ld  a,c            ; true slot layout
+    exx
+    ld  d,a            ; preserve original
+
+    ; Extract page 1 subslot
+    and 00Ch
+    ld  e,a
+
+    ; page 0 = page 1
+    rrca
+    rrca
+    ld  l,a
+
+    ; page 1
+    ld  a,e
+    or  l
+    ld  l,a
+
+    ; page 2 = page 1
+    ld  a,e
+    rlca
+    rlca
+    or  l
+    ld  l,a
+
+    ; preserve page 3
+    ld  a,d
+    and 0C0h
+    or  l
+
+    cpl
+    ld  (0FFFFh),a
+
+.done
+
+    
 
     ; -------------------------------------------------------------------------
-    ; Restore Page 3 to System RAM
+    ; Restore page 3 → RAM
     ; -------------------------------------------------------------------------
-    ld a, d                 ; Load backup of the original boot slot state
-    out (0A8h), a           ; --- FLIP BACK! --- Page 3 is instantly System RAM again.
+    in   a,(0A8h)
+    and  3Fh          ; keep current pages 0-2
+
+    exx
+    or   d            ; merge original page-3 bits
+    exx
+
+    out  (0A8h),a
 
 
     ; On return:
-    ;   D = original PPI register
-    ;   E = Primary Slot bits
-    ;   B = 00h/80h expansion flag
-    ;   C = true secondary-slot layout (valid only if B!=0)
+    ;   D' = original PPI register
+    ;   E' = Primary Slot bits
+    ;   B' = 00h/80h expansion flag
+    ;   C' = true secondary-slot layout (valid only if B!=0)
     ret
 
-BIOSCutOff:
-  ; -------------------------------------------------------------------------
-    ; BIOS CUT-OFF (Mapping page 0 to cartridge ROM)
-    ; -------------------------------------------------------------------------
-    ld a, 0xD5              ; Binary 11010101b
-    out (0A8h), a           ; The BIOS is now permanently and completely unmapped!
-
-    ret
 
 ; =============================================================================
 ; Page 2 
