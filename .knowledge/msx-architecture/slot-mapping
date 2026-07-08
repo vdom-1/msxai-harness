@@ -1,0 +1,23 @@
+# Slot mapping
+
+## Main BIOS
+
+The MSX ROM must always be placed in Primary Slot 0 by a manufacturer as this is the slot selected by the hardware at power-up. The first operation performed by the MSX ROM at power-up is to search through each slot for RAM in pages 2 and 3 (8000H to FFFFH). The Primary Slot Register is then set so that the relevant slots are selected thus making the RAM permanently available. The memory configuration of any MSX machine can be determined by displaying the Primary Slot Register setting via PPI Port A.
+
+It should be noted that the above describes the conventional MSX memory configuration established by the BIOS during the boot process. Bare-metal applications are not required to preserve this arrangement. Once execution is transferred to the ROM program (typically in page 1), the application may immediately reprogram the Primary Slot Register to establish any memory map required. This includes remapping page 0, thereby removing the BIOS ROM from the address space and making the program completely independent of BIOS services. Likewise, RAM may be remapped or even removed entirely from the active address space. In such configurations, no writable memory is available, preventing the use of any operation that depends on RAM. In particular, instructions that implicitly access the stack (such as CALL, RET, PUSH, POP, interrupts, and any other stack-based operations) become unusable unless RAM is mapped back into the address space. Such techniques are commonly employed by cartridges and other bare-metal software that require complete control over the MSX memory architecture.
+
+## Expanders
+
+System memory can be increased to a theoretical maximum of sixteen 64 KB areas by using expander interfaces. An expander plugs into any Primary Slot to provide four 64 KB Secondary Slots, numbered 0 to 3, instead of one primary one. Each expander has its own local hardware, called a Secondary Slot Register, to select which of the Secondary Slots should appear in the Primary Slot. As with Primary Slots, pages can be selected from different Secondary Slots.
+
+Each Secondary Slot Register, while actually being an eight bit read/write latch, is made to appear as memory location FFFFH of its Primary Slot by the expander hardware. In order to gain access to this location on a particular expander it will usually be necessary to first switch page 3 (C000H to FFFFH) of that Primary Slot into the processor address space. The Secondary Slot Register can then be modified and, if necessary, page 3 restored to its original Primary Slot setting. Accessing memory in expanders can become rather a convoluted process.
+
+It is apparent that there must be some way of determining whether a Primary Slot contains ordinary RAM or an expander in order to access it properly. To achieve this the Secondary Slot Registers are designed to invert their contents when read back. During the power-up RAM search memory location FFFFH of each Primary Slot is examined to determine whether it behaves normally or whether the slot contains an expander. The results of these tests are stored in the Workspace Area system resource map EXPTBL for later use. This is done at power-up because of the difficulty in performing tests when the Secondary Slot Registers actually contain live settings.
+
+FCC1H EXPTBL: DEFB 00H     ; Primary Slot 0
+FCC2H         DEFB 00H     ; Primary Slot 1
+FCC3H         DEFB 00H     ; Primary Slot 2
+FCC4H         DEFB 00H     ; Primary Slot 3
+
+Memory switching is obviously an area demanding extra caution, particularly with the hierarchical mechanisms needed to control expanders. Care must be taken to avoid switching out the page in which a program is running or, if it is being used, the page containing the stack. There are a number of standard routines available to the machine code programmer in the BIOS section of the MSX ROM to simplify the process.
+

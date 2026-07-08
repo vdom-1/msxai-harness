@@ -190,7 +190,7 @@ VDP_REG_DATA:
 
 BootstrapGameEnvironment:
     ; -------------------------------------------------------------------------
-    ; 1. CONTEXT DISCOVERY (While Page 3 is still safely RAM)
+    ; CONTEXT DISCOVERY (While Page 3 is still safely RAM)
     ; -------------------------------------------------------------------------    
     in   a,(0A8h)
     ld   d,a                ; D = Original PPI state
@@ -217,7 +217,7 @@ BootstrapGameEnvironment:
     ld b, a                 ; B' = Expansion Flag (0x80 if expanded)
     exx
 
-    jr z, .skipSLTTBL       ; If not expanded, skipp SLTTBL
+    jr z, .ramCutOff       ; If not expanded, skipp SLTTBL
 
     ld a, e                 ; Get Primary Slot Index (1)
     add a, 0xC5             ; Target 0xFCC5 (SLTTBL)
@@ -229,10 +229,9 @@ BootstrapGameEnvironment:
     ld c, a                 ; C' = Cartridge Sub-slot layout
     exx
 
-.skipSLTTBL:
-
+.ramCutOff:
     ; -------------------------------------------------------------------------
-    ; 2. MAP PAGE 3 → CARTRIDGE (RAM cut-off)
+    ; MAP PAGE 3 → CARTRIDGE (RAM cut-off)
     ; -------------------------------------------------------------------------
     ld a, d
     and 0x0C                
@@ -249,7 +248,7 @@ BootstrapGameEnvironment:
 
     ld a, b                 ; Check expansion flag
     and 0x80
-    jr z, .skipSubSlotFlip     ; Not expanded? Skip to Stream assets.
+    jr z, .streamGameAssets     ; Not expanded? Skip to Stream assets.
 
     ; Cartridge is expanded: Modify layout using our clean register copy
     ld a, c                 ; A = Safe true layout (00b for your Sub-slot 0)
@@ -266,8 +265,7 @@ BootstrapGameEnvironment:
     cpl                     ; Invert it for the hardware register layout requirement
     ld (0xFFFF), a          ; --- FLIP SECONDARY! --- Page 3 (expanded) is 100% stable now.
 
-.skipSubSlotFlip:
-
+.streamGameAssets:
     ; -------------------------------------------------------------------------
     ; Stream Pattern Generator
     ; -------------------------------------------------------------------------
@@ -326,7 +324,7 @@ BootstrapGameEnvironment:
 
 
     ;------------------------------------------
-    ; BIOSCutOff
+    ; BIOS Cut-Off (page 0 → ROM)
     ;------------------------------------------
 
     ; Keep page 3 unchanged
@@ -372,7 +370,7 @@ BootstrapGameEnvironment:
     exx
     
     and 080h
-    jr  z,.done
+    jr  z,.restoreRam
 
     exx
     ld  a,c            ; true slot layout
@@ -408,10 +406,7 @@ BootstrapGameEnvironment:
     cpl
     ld  (0FFFFh),a
 
-.done
-
-    
-
+.restoreRam
     ; -------------------------------------------------------------------------
     ; Restore page 3 → RAM
     ; -------------------------------------------------------------------------
@@ -424,12 +419,6 @@ BootstrapGameEnvironment:
 
     out  (0A8h),a
 
-
-    ; On return:
-    ;   D' = original PPI register
-    ;   E' = Primary Slot bits
-    ;   B' = 00h/80h expansion flag
-    ;   C' = true secondary-slot layout (valid only if B!=0)
     ret
 
 
