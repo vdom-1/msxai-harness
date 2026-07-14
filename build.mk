@@ -6,9 +6,6 @@ MKDIR = mkdir -p
 NULL_DEV = /dev/null
 ECHO_EMPTY = echo
 
-# Clean result printing for Linux
-PRINT_RESULT = echo "Object:  $(TARGET_BINARY) ($$(stat -c%s "$(TARGET_BINARY)" 2>/dev/null || stat -f%z "$(TARGET_BINARY)" 2>/dev/null) bytes)"
-
 # -------------------------------------------------------------
 # Detect Windows and overwrite paths / commands for CMD
 # -------------------------------------------------------------
@@ -22,17 +19,22 @@ ifeq ($(OS),Windows_NT)
     NULL_DEV = nul
     ECHO_EMPTY = echo.
     
-    # CMD native file-size print
-    PRINT_RESULT = for %%I in ("$(TARGET_BINARY)") do @echo Object:  $(TARGET_BINARY) (%%~zI bytes)
+    # WINDOWS NATIVE PATH RESOLUTION:
+    WIN_CURDIR = $(subst \,/,$(CURDIR))
+    WIN_HOME = $(subst \,/,$(USERPROFILE))
+    TIDY_WORKSPACE = ~$(subst $(WIN_HOME),,$(WIN_CURDIR))
+
+    # CMD native file-size and path print
+    PRINT_RESULT = for %%I in ("$(TARGET_BINARY)") do @echo Object:  $(TIDY_WORKSPACE)/out/$(PROJECT)/$(PROJECT).$(TYPE) (%%~zI bytes)
 endif
 
 # Ensure target inputs are defined
 ifndef PROJECT
-	$(error PROJECT is undefined. Use: make PROJECT=<project_name> TYPE=<rom|bin|com>)
+    $(error PROJECT is undefined. Use: make PROJECT=<project_name> TYPE=<rom|bin|com>)
 endif
 
 ifndef TYPE
-	$(error TYPE is undefined. Use: make PROJECT=<project_name> TYPE=<rom|bin|com>)
+    $(error TYPE is undefined. Use: make PROJECT=<project_name> TYPE=<rom|bin|com>)
 endif
 
 # Build paths
@@ -40,6 +42,14 @@ PROJECT_SRC_DIR = ./src/$(PROJECT)
 MAIN_ASM = $(PROJECT_SRC_DIR)/$(PROJECT).asm
 PROJECT_OUT_DIR = ./out/$(PROJECT)
 TARGET_BINARY = $(PROJECT_OUT_DIR)/$(PROJECT).$(TYPE)
+
+# -----------------------------------------------------------------
+# Pure GNU Make Path Construction (Zero shell calls, 100% stable)
+# -----------------------------------------------------------------
+# FIX: Only define the Unix fallback if TIDY_WORKSPACE is not already set by Windows
+ifndef TIDY_WORKSPACE
+    TIDY_WORKSPACE = ~$(subst $(HOME),,$(CURDIR))
+endif
 
 .PHONY: all build
 
@@ -56,6 +66,12 @@ build:
 	@$(ECHO_EMPTY)
 	@echo Build SUCCEEDED
 	@echo **Artifacts generated**
+ifeq ($(OS),Windows_NT)
 	@$(PRINT_RESULT)
-	@echo Symbols: $(PROJECT_OUT_DIR)/$(PROJECT).sym
-	@echo Listing: $(PROJECT_OUT_DIR)/$(PROJECT).lst
+	@echo Symbols: $(TIDY_WORKSPACE)/out/$(PROJECT)/$(PROJECT).sym
+	@echo Listing: $(TIDY_WORKSPACE)/out/$(PROJECT)/$(PROJECT).lst
+else
+	@echo "Object:  $(TIDY_WORKSPACE)/out/$(PROJECT)/$(PROJECT).$(TYPE) ($$(stat -c%s "$(TARGET_BINARY)" 2>/dev/null || stat -f%z "$(TARGET_BINARY)" 2>/dev/null) bytes)"
+	@echo "Symbols: $(TIDY_WORKSPACE)/out/$(PROJECT)/$(PROJECT).sym"
+	@echo "Listing: $(TIDY_WORKSPACE)/out/$(PROJECT)/$(PROJECT).lst"
+endif
