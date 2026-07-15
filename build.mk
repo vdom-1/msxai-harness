@@ -8,7 +8,6 @@ endif
 
 ROOT_DIR := $(subst \,/,$(CURDIR))
 
-# Define absolute paths for our build execution
 SRC_DIR  := $(ROOT_DIR)/src/$(PROJECT)
 OUT_DIR  := $(ROOT_DIR)/out/$(PROJECT)
 
